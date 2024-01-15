@@ -1,0 +1,155 @@
+INSTALLING CARDANO NODES 
+
+Hardware specifications:
+-Operating system: 64-bit Linux (i.e. Ubuntu Server 20.04 LTS)
+-Processor: An Intel or AMD x86 processor with two or more cores, at 2GHz or faster
+-Memory: 24GB RAM
+-Storage: 200GB free storage
+
+What is a Cardano Node:
+cardano-node is the top level for the node and aggregates the other components from other packages: consensus, ledger, and networking, with configuration, CLI, logging, and monitoring.
+
+STEP 1 - Install the glasgow Haskell compiler and Cabal in the following way:
+1.1)  In a terminal window on the computer hosting your block-producing node type:
+sudo apt-get update -y
+sudo apt-get upgrade -y
+
+1.2) To install packages and tools required for downloading and compiling Cardano Node source code, type:
+sudo apt-get install autoconf automake build-essential curl g++ git jq libffi-dev libgmp-dev libncursesw5 libssl-dev libsystemd-dev libtinfo-dev libtool make pkg-config tmux wget zlib1g-dev -y
+
+1.3) To use the GHCup installer to install GHC and Cabal, type:
+curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+
+1.4) During installation, when prompted:
+i. Press ENTER to proceed.
+ii. To prepend the required PATH variable to $HOME/.bashrc, type P
+iii. When prompted to install haskell-language-server (HLS), type N
+iv. When prompted to install slack, type N
+v. Press ENTER to proceed.
+
+1.5) When GHCup finishes installing GHC and Cabal, type the following commands to reload your shell profile, and then confirm that GHCup installed correctly:
+source $HOME/.bashrc
+ghcup --version
+
+1.6) To set the Glasgow Haskell Compiler to the version required for compiling the current Cardano Node release, type the following commands:
+ghcup install ghc <GHCVersionNumber>
+ghcup set ghc <GHCVersionNumber>
+ghc --version
+
+1.7) To set Cabal to the version required for compiling the current Cardano Node release, type the following commands:
+ghcup install cabal <CabalVersionNumber>
+ghcup set cabal <CabalVersionNumber>
+cabal --version
+
+1.8) To create a working directory to store source code and builds related to Cardano Node, type:
+mkdir $HOME/git
+cd $HOME/git
+
+1.9) To download, compile and install libsodium, type:
+git clone https://github.com/input-output-hk/libsodium
+cd libsodium
+git checkout dbb48cc
+./autogen.sh
+./configure
+make
+sudo make install
+
+1.10) If you are using Ubuntu on a Raspberry Pi 4, then type the following command to resolve a cannot find -lnuma error message when compiling libsodium:
+sudo apt-get install libnuma-dev
+
+1.11) To download, compile and install libsecp256k1, type:
+cd $HOME/git
+git clone https://github.com/bitcoin-core/secp256k1
+cd secp256k1
+git checkout ac83be33
+./autogen.sh
+./configure --enable-module-schnorrsig --enable-experimental
+make
+make check
+sudo make install
+sudo ldconfig
+
+1.12) To download and install the blst library, type:
+cd $HOME/git
+git clone https://github.com/supranational/blst
+cd blst
+git checkout v0.3.10
+./build.sh
+cat > libblst.pc << EOF
+prefix=/usr/local
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libblst
+Description: Multilingual BLS12-381 signature library
+URL: https://github.com/supranational/blst
+Version: 0.3.10
+Cflags: -I\${includedir}
+Libs: -L\${libdir} -lblst
+EOF
+sudo cp libblst.pc /usr/local/lib/pkgconfig/
+sudo cp bindings/blst_aux.h bindings/blst.h bindings/blst.hpp /usr/local/include/
+sudo cp libblst.a /usr/local/lib
+sudo chmod u=rw,go=r /usr/local/{lib/{libblst.a,pkgconfig/libblst.pc},include/{blst.{h,hpp},blst_aux.h}}
+
+1.13) Using a text editor, open the $HOME/.bashrc file, and then add the following lines at the end of the file:
+# Set environment variables so that the compiler finds libsodium on your computer
+export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+# Set an environment variable indicating the file path to configuration files and scripts
+# related to operating your Cardano node
+export NODE_HOME="$HOME/cardano-my-node"
+# Set an environment variable indicating the Cardano network cluster where your node runs
+export NODE_CONFIG="mainnet"
+
+
+1.14) if you plan to use your Cardano node on a testnet network instead of mainnet, then replace the line export NODE_CONFIG="mainnet" in your $HOME/.bashrc file with export 
+NODE_CONFIG="testnet"
+
+1.15) Also, when working through the How to Set Up a Cardano Stake Pool guide, replace every instance of the command option --mainnet with --testnet-magic <MagicNumber> where 
+<MagicNumber> is the network magic number for the testnet network that you want to use. 
+
+1.16) Save and close the $HOME/.bashrc file.
+
+1.17) To create the folder set for the NODE_HOME environment variable in your $HOME/.bashrc file, type:
+mkdir $HOME/cardano-my-node
+
+1.18) To reload your shell profile, type:
+source $HOME/.bashrc
+
+STEP 2 - COMPILE THE CARDANO NODE IN THE FOLLOWING WAY:
+2.1) In a terminal window on the computer hosting your block-producing node, type the following command to navigate to the working directory that you created in STEP 1:
+cd $HOME/git
+
+2.2) To download Cardano Node source code, type:
+git clone https://github.com/input-output-hk/cardano-node.git
+cd cardano-node
+git fetch --all --recurse-submodules --tags
+
+2.3) To switch the repository that you downloaded to your local computer in step 2 to the latest tagged commit, type:
+git checkout $(curl -s https://api.github.com/repos/input-output-hk/cardano-node/releases/latest | jq -r .tag_name)
+
+2.4) To adjust the project configuration to disable optimization and set the recommended compiler version, type the following command:
+cabal update
+cabal configure -O0 -w ghc-<GHCVersionNumber>
+
+2.5) Using a text editor, open the file named cabal.project.local located in the current folder, and then add the following lines at the end of the file to avoid installing a custom 
+libsodium library: 
+package cardano-crypto-praos
+ flags: -external-libsodium-vrf
+ 
+2.6) Save and close the cabal.project.local file.
+ 
+2.7)  To produce executable cardano-node and cardano-cli binaries, type:
+ cabal build cardano-node cardano-cli
+ 
+2.8) To copy the cardano-node and cardano-cli binaries that you produced in step 7 into the /usr/local/bin directory, type:
+ sudo cp -p "$(./scripts/bin-path.sh cardano-node)" /usr/local/bin/cardano-node
+sudo cp -p "$(./scripts/bin-path.sh cardano-cli)" /usr/local/bin/cardano-cli
+
+2.9) To confirm that the version installed on your computer matches the latest release available in the Cardano Node type:
+cardano-node --version
+cardano-cli --version
+
+
